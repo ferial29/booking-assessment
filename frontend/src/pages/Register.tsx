@@ -17,13 +17,11 @@ export default function Register() {
     setSuccess("");
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}/auth/register`, data);
-      , {
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/auth/register`, {
         name,
         email,
         password,
       });
-
       setSuccess("Account created! Redirecting...");
 
       localStorage.setItem("token", res.data.token);
