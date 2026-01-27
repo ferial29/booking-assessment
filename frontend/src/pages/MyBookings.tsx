@@ -7,9 +7,10 @@ export default function MyBookings() {
 
   async function load() {
     try {
-      const res = await axios.get("http://localhost:4000/bookings/me", {
+      const res = await axios.get(`${import.meta.env.VITE_API_URL}/bookings/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      
       setBookings(res.data);
     } catch (err) {
       console.error(err);
@@ -21,9 +22,10 @@ export default function MyBookings() {
     if (!confirm("Are you sure you want to cancel this booking?")) return;
 
     try {
-      await axios.delete(`http://localhost:4000/bookings/${id}`, {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/bookings/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      
       load();
     } catch (err) {
       alert("Unable to cancel booking");

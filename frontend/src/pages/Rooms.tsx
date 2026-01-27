@@ -14,7 +14,7 @@ export default function Rooms() {
     if (!date) return;
 
     const res = await axios.get(
-      `http://localhost:4000/rooms/availability?date=${date}`
+      `${import.meta.env.VITE_API_URL}/rooms/availability?date=${date}`
     );
 
     setRooms(res.data);
