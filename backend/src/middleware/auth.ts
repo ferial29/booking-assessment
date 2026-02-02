@@ -1,64 +1,43 @@
-import { Request, Response, NextFunction } from "express";
+import type { Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import type { AuthRequest } from "../types/AuthRequest";
 
-export interface AuthedRequest extends Request {
-  user?: {
-    id: string;
-    role: string;
-  };
+type JwtPayload = {
+  id: string;
+  role: string;
+  iat?: number;
+  exp?: number;
+};
+
+export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  const token = header.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+
+    if (!decoded?.id) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    req.user = { id: decoded.id, role: decoded.role || "user" };
+    next();
+  } catch (e) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
 }
 
-/**
- * MAIN AUTH MIDDLEWARE
- */
-export const authMiddleware = (
-  req: AuthedRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const header = req.headers.authorization;
-
-    if (!header || !header.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "Invalid or missing token" });
+export function roleMiddleware(requiredRole: string) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+    if (req.user.role !== requiredRole) {
+      return res.status(403).json({ message: "Forbidden" });
     }
-
-    const token = header.split(" ")[1];
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      userId: string;
-      role: string;
-    };
-
-    if (!decoded.userId) {
-      return res.status(401).json({ message: "Invalid token payload" });
-    }
-
-    req.user = {
-      id: decoded.userId,
-      role: decoded.role,
-    };
-
-    next();
-  } catch (error) {
-    console.error("Auth error:", error);
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-};
-
-/**
- * ROLE CHECKER
- */
-export const roleMiddleware = (role: "admin" | "user") => {
-  return (req: AuthedRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    if (req.user.role !== role) {
-      return res.status(403).json({ message: "Forbidden: insufficient role" });
-    }
-
     next();
   };
-};
+}

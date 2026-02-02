@@ -1,11 +1,12 @@
 import express from "express";
+import type { Response } from "express";
 import Booking from "../models/Booking";
 import { authMiddleware } from "../middleware/auth";
-import { AuthRequest } from "../types/auth";
+import type { AuthRequest } from "../types/AuthRequest";
 
 const router = express.Router();
 
-router.post("/", authMiddleware, async (req: AuthRequest, res) => {
+router.post("/", authMiddleware, async (req: AuthRequest, res: Response) => {
   const { roomId, startTime, endTime } = req.body;
   const userId = req.user.id;
 
@@ -13,21 +14,32 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
   const e = new Date(endTime);
   const now = new Date();
 
+  if (!roomId || !startTime || !endTime) {
+    return res.status(400).json({ message: "roomId, startTime, endTime are required" });
+  }
+
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+    return res.status(400).json({ message: "Invalid date format" });
+  }
+
   if (s >= e) return res.status(400).json({ message: "start must be before end" });
   if (e <= now) return res.status(400).json({ message: "cannot book past" });
 
+  // Check overlapping bookings
   const conflicting = await Booking.find({
     roomId,
     status: "active",
-    $or: [{ startTime: { $lt: e }, endTime: { $gt: s } }],
+    startTime: { $lt: e },
+    endTime: { $gt: s },
   });
 
-  if (conflicting.length)
+  if (conflicting.length) {
     return res.status(409).json({
       conflict: true,
       message: "Room is already booked during this time",
       conflictingBookings: conflicting,
     });
+  }
 
   const b = await Booking.create({
     roomId,
@@ -38,8 +50,9 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
     createdAt: new Date(),
   });
 
+  // broadcast via socket (optional)
   try {
-    (req.io as any)?.emit("booking-created", {
+    (req as any).io?.emit("booking-created", {
       bookingId: b._id,
       roomId,
       startTime: b.startTime,
@@ -48,21 +61,26 @@ router.post("/", authMiddleware, async (req: AuthRequest, res) => {
     });
   } catch {}
 
-  res.json(b);
+  return res.json(b);
 });
 
-router.patch("/:id/reschedule", authMiddleware, async (req: AuthRequest, res) => {
+router.patch("/:id/reschedule", authMiddleware, async (req: AuthRequest, res: Response) => {
   const id = req.params.id;
   const { startTime, endTime } = req.body;
 
   const booking = await Booking.findById(id);
   if (!booking) return res.status(404).json({ message: "not found" });
 
-  if (booking.userId.toString() !== req.user.id && req.user.role !== "admin")
+  if (booking.userId.toString() !== req.user.id && req.user.role !== "admin") {
     return res.status(403).json({ message: "not owner" });
+  }
 
   const s = new Date(startTime);
   const e = new Date(endTime);
+
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+    return res.status(400).json({ message: "Invalid date format" });
+  }
 
   if (s >= e) return res.status(400).json({ message: "start must be before end" });
 
@@ -70,22 +88,24 @@ router.patch("/:id/reschedule", authMiddleware, async (req: AuthRequest, res) =>
     roomId: booking.roomId,
     status: "active",
     _id: { $ne: booking._id },
-    $or: [{ startTime: { $lt: e }, endTime: { $gt: s } }],
+    startTime: { $lt: e },
+    endTime: { $gt: s },
   });
 
-  if (conflicting.length)
+  if (conflicting.length) {
     return res.status(409).json({
       conflict: true,
       message: "Room is already booked during this time",
       conflictingBookings: conflicting,
     });
+  }
 
   booking.startTime = s;
   booking.endTime = e;
   await booking.save();
 
   try {
-    (req.io as any)?.emit("booking-rescheduled", {
+    (req as any).io?.emit("booking-rescheduled", {
       bookingId: booking._id,
       roomId: booking.roomId,
       startTime: booking.startTime,
@@ -94,31 +114,32 @@ router.patch("/:id/reschedule", authMiddleware, async (req: AuthRequest, res) =>
     });
   } catch {}
 
-  res.json(booking);
+  return res.json(booking);
 });
 
-router.get("/me", authMiddleware, async (req: AuthRequest, res) => {
+router.get("/me", authMiddleware, async (req: AuthRequest, res: Response) => {
   const bookings = await Booking.find({ userId: req.user.id })
     .populate("roomId")
     .sort({ startTime: 1 });
 
-  res.json(bookings);
+  return res.json(bookings);
 });
 
-router.delete("/:id", authMiddleware, async (req: AuthRequest, res) => {
+router.delete("/:id", authMiddleware, async (req: AuthRequest, res: Response) => {
   const id = req.params.id;
 
   const booking = await Booking.findById(id);
   if (!booking) return res.status(404).json({ message: "not found" });
 
-  if (booking.userId.toString() !== req.user.id && req.user.role !== "admin")
+  if (booking.userId.toString() !== req.user.id && req.user.role !== "admin") {
     return res.status(403).json({ message: "not owner" });
+  }
 
   booking.status = "cancelled";
   await booking.save();
 
   try {
-    (req.io as any)?.emit("booking-cancelled", {
+    (req as any).io?.emit("booking-cancelled", {
       bookingId: booking._id,
       roomId: booking.roomId,
       startTime: booking.startTime,
@@ -127,7 +148,7 @@ router.delete("/:id", authMiddleware, async (req: AuthRequest, res) => {
     });
   } catch {}
 
-  res.json({ ok: true });
+  return res.json({ ok: true });
 });
 
 export default router;
