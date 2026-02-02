@@ -1,43 +1,47 @@
-import type { Response, NextFunction } from "express";
+import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
-import type { AuthRequest } from "../types/AuthRequest";
 
 type JwtPayload = {
   id: string;
   role: string;
-  iat?: number;
-  exp?: number;
 };
 
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+export const authMiddleware: RequestHandler = (req, res, next) => {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No token provided" });
+    res.status(401).json({ message: "Unauthorized" });
+    return;
   }
 
   const token = header.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "super_secret_for_tests"
+    ) as JwtPayload;
 
-    if (!decoded?.id) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
-
-    req.user = { id: decoded.id, role: decoded.role || "user" };
+    req.user = { id: decoded.id, role: decoded.role };
     next();
   } catch (e) {
-    return res.status(401).json({ message: "Invalid token" });
+    res.status(401).json({ message: "Invalid token" });
+    return;
   }
-}
+};
 
-export function roleMiddleware(requiredRole: string) {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-    if (req.user.role !== requiredRole) {
-      return res.status(403).json({ message: "Forbidden" });
+export const roleMiddleware = (role: "admin" | "user"): RequestHandler => {
+  return (req, res, next) => {
+    if (!req.user) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
     }
+
+    if (req.user.role !== role) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
     next();
   };
-}
+};
