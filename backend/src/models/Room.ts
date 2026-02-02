@@ -1,7 +1,19 @@
-import mongoose from 'mongoose';
-export interface IRoom {
-  name: string;
-  capacity: number;
-}
-const RoomSchema = new mongoose.Schema<IRoom>({ name: String, capacity: Number });
-export default mongoose.model<IRoom & mongoose.Document>('Room', RoomSchema);
+import mongoose, { Schema, InferSchemaType, Model } from "mongoose";
+
+const roomSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    capacity: { type: Number, default: 1 },
+  },
+  { timestamps: true }
+);
+
+export type RoomDoc = InferSchemaType<typeof roomSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
+
+const Room =
+  (mongoose.models.Room as Model<RoomDoc>) ||
+  mongoose.model<RoomDoc>("Room", roomSchema);
+
+export default Room;
