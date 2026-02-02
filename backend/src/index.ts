@@ -15,25 +15,35 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+
+/** ✅ Allowed origins (Frontend) */
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://booking-assessment-phi.vercel.app",
+];
+
+/** ✅ Socket.IO CORS (must NOT be "*" if credentials is true) */
 const io = new SocketIOServer(server, {
   cors: {
-    origin: "*",
+    origin: ALLOWED_ORIGINS,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
   },
 });
 
-/* ---------- CORS (مهم برای Vercel) ---------- */
+/* ---------- CORS (مهم برای Vercel/Local) ---------- */
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://booking-assessment-phi.vercel.app",
-    ],
+    origin: ALLOWED_ORIGINS,
+    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.options("*", cors());
+/** ✅ پاسخ دادن به preflight */
+app.options("*", cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 
 app.use(express.json());
 
