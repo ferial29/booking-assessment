@@ -1,9 +1,4 @@
-import "express";
-
-export type AuthUser = {
-  id: string;
-  role: string;
-};
+import type { AuthUser } from "./auth";
 
 declare global {
   namespace Express {
@@ -12,3 +7,5 @@ declare global {
     }
   }
 }
+
+export {};
