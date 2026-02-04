@@ -1,49 +1,84 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import TimeRangePicker from "../components/TimeRangePicker";
+import Toast from "../components/Toast";
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+type Slot = {
+  start: string;
+  end: string;
+};
+
+type Room = {
+  roomId: string;
+  roomName: string;
+  capacity: number;
+  availableSlots: Slot[];
+};
 
 export default function Rooms() {
   const [date, setDate] = useState("");
-  const [rooms, setRooms] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
-  const [selectedRoom, setSelectedRoom] = useState<any>(null);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
+
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error" | "info">(
+    "info"
+  );
+
+  function showToast(
+    message: string,
+    type: "success" | "error" | "info" = "info"
+  ) {
+    setToastMsg(message);
+    setToastType(type);
+    setToastOpen(true);
+  }
 
   async function loadRooms() {
     if (!date) return;
 
-    const res = await axios.get(
-      `${import.meta.env.VITE_API_URL}/rooms/availability?date=${date}`
-    );
-
-    setRooms(res.data);
+    try {
+      const res = await axios.get(`${API_URL}/rooms/availability`, {
+        params: { date },
+      });
+      setRooms(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setRooms([]);
+      showToast("Failed to load rooms", "error");
+    }
   }
 
   async function submitBooking() {
-    if (!selectedRoom) return alert("Select a room first");
+    if (!selectedRoom) return showToast("Select a room first", "info");
 
     const token = localStorage.getItem("token");
-
-    const payload = {
-      roomId: selectedRoom.roomId,
-      startTime: `${date}T${startTime}:00Z`,
-      endTime: `${date}T${endTime}:00Z`,
-    };
+    if (!token) return showToast("Please login again", "error");
 
     try {
-      await axios.post("http://localhost:4000/bookings", payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+      await axios.post(
+        `${API_URL}/bookings`,
+        {
+          roomId: selectedRoom.roomId,
+          startDate: `${date}T${startTime}:00`,
+          endDate: `${date}T${endTime}:00`,
         },
-      });
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
-      alert("Booking Confirmed!");
+      showToast("Booking confirmed!", "success");
+      setSelectedRoom(null);
       loadRooms();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Booking failed");
-      console.log(err);
+      showToast(err.response?.data?.message || "Booking failed", "error");
     }
   }
 
@@ -52,53 +87,73 @@ export default function Rooms() {
   }, [date]);
 
   return (
-    <div className="space-y-6 p-6">
-      <h1 className="text-2xl font-bold mb-4">Rooms Availability</h1>
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Rooms Availability</h1>
 
-      {/* Date Picker */}
       <input
         type="date"
         value={date}
         onChange={(e) => setDate(e.target.value)}
-        className="p-3 border rounded-lg shadow-sm"
+        className="p-3 border rounded-lg"
       />
 
-      {/* Rooms List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {rooms.length === 0 && date && (
+        <p className="text-gray-500">No rooms found for this date.</p>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {rooms.map((room) => (
           <div
             key={room.roomId}
-            className="p-4 bg-white shadow rounded border hover:shadow-lg transition"
+            className="border rounded-xl p-5 bg-white shadow"
           >
-            <h2 className="font-semibold text-lg">{room.roomName}</h2>
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-lg">{room.roomName}</h2>
+                <p className="text-sm text-gray-600">
+                  Capacity: {room.capacity}
+                </p>
+              </div>
 
-            <ul className="text-gray-600 mt-2 text-sm">
+              <button
+                onClick={() => setSelectedRoom(room)}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Select Room
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
               {room.availableSlots.length === 0 && (
-                <li className="text-red-500">No available slots</li>
+                <span className="text-red-500 col-span-2">
+                  No available slots
+                </span>
               )}
 
-              {room.availableSlots.map((slot: any, i: number) => (
-                <li key={i}>
-                  {new Date(slot.start).toLocaleTimeString()} —
-                  {new Date(slot.end).toLocaleTimeString()}
-                </li>
+              {room.availableSlots.map((slot, i) => (
+                <div
+                  key={i}
+                  className="border rounded-md px-3 py-2 bg-gray-50 text-center"
+                >
+                  {new Date(slot.start).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}{" "}
+                  –{" "}
+                  {new Date(slot.end).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
               ))}
-            </ul>
-
-            <button
-              onClick={() => setSelectedRoom(room)}
-              className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Select Room
-            </button>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Booking Panel */}
       {selectedRoom && (
-        <div className="p-5 bg-gray-50 rounded-xl border shadow mt-6">
-          <h3 className="text-lg font-semibold mb-3">
+        <div className="border rounded-xl p-6 bg-gray-50">
+          <h3 className="font-semibold text-lg mb-3">
             Book Room: {selectedRoom.roomName}
           </h3>
 
@@ -111,12 +166,19 @@ export default function Rooms() {
 
           <button
             onClick={submitBooking}
-            className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+            className="mt-4 bg-green-600 text-white px-5 py-2 rounded"
           >
             Confirm Booking
           </button>
         </div>
       )}
+
+      <Toast
+        open={toastOpen}
+        message={toastMsg}
+        type={toastType}
+        onClose={() => setToastOpen(false)}
+      />
     </div>
   );
 }

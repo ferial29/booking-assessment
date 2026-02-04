@@ -1,23 +1,15 @@
-import mongoose, { Schema, InferSchemaType, Model } from "mongoose";
+import { Schema, model, Types } from "mongoose";
 
 const bookingSchema = new Schema(
   {
-    roomId: { type: Schema.Types.ObjectId, ref: "Room", required: true },
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    startTime: { type: Date, required: true },
-    endTime: { type: Date, required: true },
-    status: { type: String, enum: ["active", "cancelled"], default: "active" },
-    createdAt: { type: Date, default: Date.now },
+    user: { type: Types.ObjectId, ref: "User", required: true },
+    room: { type: Types.ObjectId, ref: "Room", required: true },
+
+    // اگر تو پروژه‌ات startDate/endDate داری همین‌ها رو نگه می‌داریم
+    startDate: { type: String, required: true },
+    endDate: { type: String, required: true },
   },
   { timestamps: true }
 );
 
-export type BookingDoc = InferSchemaType<typeof bookingSchema> & {
-  _id: mongoose.Types.ObjectId;
-};
-
-const Booking =
-  (mongoose.models.Booking as Model<BookingDoc>) ||
-  mongoose.model<BookingDoc>("Booking", bookingSchema);
-
-export default Booking;
+export default model("Booking", bookingSchema);

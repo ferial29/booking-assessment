@@ -1,120 +1,132 @@
-import express from "express";
+import { Router, Request, Response } from "express";
+import * as auth from "../middleware/auth";
 import Room from "../models/Room";
 import Booking from "../models/Booking";
-import { authMiddleware, roleMiddleware } from "../middleware/auth";
 
-const router = express.Router();
+const router = Router();
 
-/**
- * GET /rooms
- * Returns all rooms
- */
-router.get("/", async (req, res) => {
+/** GET /rooms - list rooms */
+router.get("/", async (_req: Request, res: Response) => {
   try {
-    const rooms = await Room.find({});
-    res.json(rooms);
-  } catch (err) {
-    res.status(500).json({ message: "Error fetching rooms" });
+    const rooms = await Room.find().sort({ createdAt: -1 });
+    return res.json(rooms);
+  } catch (_err) {
+    return res.status(500).json({ message: "Failed to load rooms" });
   }
 });
 
-/**
- * POST /rooms
- * Create a new room (Admin only)
- */
-router.post("/", authMiddleware, roleMiddleware("admin"), async (req, res) => {
-  try {
-    const { name, capacity, description } = req.body;
+/** POST /rooms - create room (admin) */
+router.post(
+  "/",
+  auth.authMiddleware,
+  auth.requireRole("admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { name, capacity, description } = req.body;
 
-    if (!name || !capacity) {
-      return res.status(400).json({ message: "Name and capacity are required" });
+      if (!name) {
+        return res.status(400).json({ message: "name is required" });
+      }
+
+      const room = await Room.create({
+        name,
+        capacity: capacity ? Number(capacity) : undefined,
+        description: description || "",
+      });
+
+      return res.status(201).json(room);
+    } catch (_err) {
+      return res.status(500).json({ message: "Failed to create room" });
     }
-
-    const room = await Room.create({
-      name,
-      capacity,
-      description: description || "",
-    });
-
-    res.json(room);
-  } catch (err) {
-    console.error("Create room error:", err);
-    res.status(500).json({ message: "Failed to create room" });
   }
-});
+);
 
-/**
- * GET /rooms/availability?date=YYYY-MM-DD
- * Returns available slots for each room on selected date
- */
-router.get("/availability", async (req, res) => {
-  try {
-    const dateQ = req.query.date as string;
-    if (!dateQ) {
-      return res.status(400).json({ message: "date required" });
+/** DELETE /rooms/:id - delete room (admin) */
+router.delete(
+  "/:id",
+  auth.authMiddleware,
+  auth.requireRole("admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      const room = await Room.findById(id);
+      if (!room) return res.status(404).json({ message: "Room not found" });
+
+      await Booking.deleteMany({ room: id });
+      await Room.findByIdAndDelete(id);
+
+      return res.json({ message: "Room deleted" });
+    } catch (_err) {
+      return res.status(500).json({ message: "Failed to delete room" });
     }
+  }
+);
 
-    const dayStart = new Date(dateQ);
-    dayStart.setHours(0, 0, 0, 0);
+/** GET /rooms/availability?date=YYYY-MM-DD */
+router.get("/availability", async (req: Request, res: Response) => {
+  try {
+    const date = String(req.query.date || "");
+    if (!date) return res.status(400).json({ message: "date is required" });
 
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // Local day window
+    const dayStart = new Date(`${date}T00:00:00`);
+    const dayEnd = new Date(`${date}T23:59:59`);
 
-    const rooms = await Room.find({});
-    const bookings = await Booking.find({
-      startTime: { $lt: dayEnd },
-      endTime: { $gt: dayStart },
-      status: "active",
-    });
+    const rooms = await Room.find().sort({ createdAt: -1 });
 
-    const START_H = 8;
-    const END_H = 20;
+    const businessHours = [
+      "09:00",
+      "10:00",
+      "11:00",
+      "12:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:00",
+    ];
 
-    const result = rooms.map((room) => {
-      const rBookings = bookings.filter(
-        (b) => b.roomId.toString() === room._id.toString()
-      );
+    const results: any[] = [];
 
-      const slots: any[] = [];
+    for (const room of rooms) {
+      const bookings = await Booking.find({
+        room: room._id,
+        startDate: { $lte: dayEnd },
+        endDate: { $gte: dayStart },
+      });
 
-      let cursor = new Date(dayStart);
-      cursor.setHours(START_H, 0, 0, 0);
+      const availableSlots: { start: string; end: string }[] = [];
 
-      const sorted = rBookings.sort(
-        (a, b) => a.startTime.getTime() - b.startTime.getTime()
-      );
+      for (let i = 0; i < businessHours.length - 1; i++) {
+        const start = new Date(`${date}T${businessHours[i]}:00`);
+        const end = new Date(`${date}T${businessHours[i + 1]}:00`);
 
-      for (const b of sorted) {
-        if (b.startTime > cursor) {
-          slots.push({
-            start: cursor.toISOString(),
-            end: b.startTime.toISOString(),
+        const overlaps = bookings.some((b: any) => {
+          const bStart = new Date(b.startDate);
+          const bEnd = new Date(b.endDate);
+          return start < bEnd && end > bStart;
+        });
+
+        if (!overlaps) {
+          availableSlots.push({
+            start: start.toISOString(),
+            end: end.toISOString(),
           });
         }
-        if (b.endTime > cursor) cursor = new Date(b.endTime);
       }
 
-      const dayEndTime = new Date(dayStart);
-      dayEndTime.setHours(END_H, 0, 0, 0);
-
-      if (cursor < dayEndTime) {
-        slots.push({
-          start: cursor.toISOString(),
-          end: dayEndTime.toISOString(),
-        });
-      }
-
-      return {
-        roomId: room._id,
+      results.push({
+        roomId: room._id.toString(),
         roomName: room.name,
-        availableSlots: slots,
-      };
-    });
+        capacity: room.capacity,
+        availableSlots,
+      });
+    }
 
-    res.json(result);
-  } catch (err) {
-    console.error("Availability error:", err);
-    res.status(500).json({ message: "Error calculating availability" });
+    return res.json(results);
+  } catch (_err) {
+    return res.status(500).json({ message: "Failed to load availability" });
   }
 });
 
