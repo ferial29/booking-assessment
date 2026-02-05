@@ -12,6 +12,11 @@ This application demonstrates:
 - Scalable backend built in Node.js + Express + MongoDB  
 
 ---
+## 🌐 Live Demo
+
+- **Frontend (Vercel):** https://booking-assessment-phi.vercel.app  
+- **Backend (Render):** https://booking-assessment.onrender.com  
+
 
 ## 📦 Technology Stack
 
@@ -131,10 +136,14 @@ http://localhost:4000
 | WebSocket | ws://localhost:4000 |
 
 ---
-Connected to MongoDB
-🚀 Default admin created:
-Email: admin@demo.com
-Password: Admin1234
+
+## ✅ Default Admin Account
+
+A default admin is automatically created on server start:
+
+- **Email:** admin@demo.com  
+- **Password:** Admin1234  
+
 Server listening on 4000
 
 
