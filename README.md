@@ -1,7 +1,6 @@
 # Booking Management System (Full-Stack Technical Assessment)
 
-A complete **Room Booking System** built for a technical evaluation.  
-This application demonstrates:
+Production-ready full-stack Room Booking System built with React, TypeScript, Node.js, and MongoDB:
 
 - Secure authentication (Register/Login) using JWT  
 - Role-based access control (Admin/User)  
